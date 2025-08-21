@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cronómetro de Respiración</title>
+  <style>
+    :root{
+      --bg1:#0f172a; /* slate-900 */
+      --bg2:#111827; /* gray-900 */
+      --fg:#e5e7eb;  /* gray-200 */
+      --muted:#94a3b8; /* slate-400 */
+      --accent:#22d3ee; /* cyan-400 */
+      --ok:#34d399; /* green-400 */
+      --warn:#fbbf24; /* amber-400 */
+      --err:#f87171; /* red-400 */
+    }
+    html,body{height:100%}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;
+      color:var(--fg);
+      background: radial-gradient(1000px 600px at 20% -10%, #164e63 0%, transparent 60%),
+                  radial-gradient(1000px 600px at 110% 110%, #1e40af 0%, transparent 60%),
+                  linear-gradient(135deg,var(--bg1),var(--bg2));
+      display:flex; align-items:center; justify-content:center;
+      padding:24px;
+    }
+    .app{max-width:1100px; width:100%; display:grid; gap:20px; grid-template-columns: 1.2fr 1fr;}
+    @media (max-width: 950px){ .app{grid-template-columns:1fr;}}
+
+    .panel{background:#ffffff12; border:1px solid #ffffff22; backdrop-filter: blur(8px);
+      border-radius:20px; padding:20px; box-shadow:0 20px 50px #0007}
+
+    h1{margin:0 0 4px; font-weight:800; letter-spacing:.3px}
+    .sub{color:var(--muted); margin:0 0 16px}
+
+    .controls{display:grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap:12px; align-items:end}
+    .controls .wide{grid-column: span 3}
+    .controls .full{grid-column: 1 / -1}
+    .controls label{font-size:12px; color:var(--muted); display:block; margin-bottom:6px}
+    .controls input[type="number"], .controls select{
+      width:100%; background:#0b1220; color:var(--fg); border:1px solid #334155; border-radius:12px; padding:10px 12px; font-weight:600;
+    }
+    .toggles{display:flex; gap:12px; flex-wrap:wrap; margin-top:8px}
+    .chip{display:inline-flex; align-items:center; gap:8px; background:#0b1220; border:1px solid #334155; padding:8px 12px; border-radius:999px; cursor:pointer; user-select:none}
+    .chip input{accent-color:var(--accent)}
+
+    .buttons{display:flex; gap:12px; flex-wrap:wrap; margin-top:12px}
+    .btn{border:1px solid #334155; background:#0b1220; color:var(--fg); padding:12px 16px; border-radius:12px; font-weight:800; letter-spacing:.4px; cursor:pointer}
+    .btn.primary{border-color:transparent; background:linear-gradient(135deg,#06b6d4,#2563eb);}
+    .btn:disabled{opacity:.6; cursor:not-allowed}
+
+    .stage{ display:grid; place-items:center; }
+
+    .breath-wrap{ position:relative; width:min(75vh, 75vw, 520px); aspect-ratio:1; }
+    .circle{ position:absolute; inset:0; display:grid; place-items:center; border-radius:50%;
+      background: radial-gradient(circle at 30% 30%, #0891b2 0%, #0ea5e9 30%, #4338ca 100%);
+      transform: scale(var(--scale, 0.7));
+      transition: transform 0.12s linear; box-shadow: 0 0 0 8px #00000022, inset 0 0 50px #0008;
+    }
+    .ring{ position:absolute; inset: -6px; border-radius:50%; border:6px dashed #94a3b888; filter: drop-shadow(0 0 10px #94a3b844)}
+
+    .label{ position:absolute; text-align:center; }
+    .label h2{ font-size:48px; margin:0 0 4px }
+    .label .count{ font-size:22px; color:#d1d5db }
+    .label .meta{ font-size:14px; color:var(--muted); margin-top:10px }
+
+    .bar{height:10px; background:#0b1220; border:1px solid #334155; border-radius:999px; overflow:hidden;}
+    .bar > i{display:block; height:100%; width:0%; background:linear-gradient(90deg,#22d3ee,#60a5fa,#c084fc); transition: width .2s ease}
+
+    .tips{ font-size:12px; color:var(--muted); line-height:1.6 }
+    .kbd{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; background:#0b1220; border:1px solid #334155; padding:2px 6px; border-radius:6px }
+    .status{font-weight:800}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <section class="panel">
+      <h1>🧘‍♂️ Cronómetro de Respiración</h1>
+      <p class="sub">Guía visual + sonora para practicar patrones como <em>box breathing</em>, 4‑7‑8 y respiración coherente. Sin instalaciones.</p>
+
+      <div class="controls">
+        <div class="wide">
+          <label>Preset</label>
+          <select id="preset">
+            <option value="custom">Personalizado</option>
+            <option value="box">Box (4‑4‑4‑4)</option>
+            <option value="478">4‑7‑8 (4‑7‑8‑0)</option>
+            <option value="coherent">Coherente (5‑0‑5‑0)</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Inhala (s)</label>
+          <input type="number" id="inhale" min="0" step="0.5" value="4">
+        </div>
+        <div>
+          <label>Sostén 1 (s)</label>
+          <input type="number" id="hold1" min="0" step="0.5" value="4">
+        </div>
+        <div>
+          <label>Exhala (s)</label>
+          <input type="number" id="exhale" min="0" step="0.5" value="4">
+        </div>
+        <div>
+          <label>Sostén 2 (s)</label>
+          <input type="number" id="hold2" min="0" step="0.5" value="4">
+        </div>
+
+        <div>
+          <label>Ciclos</label>
+          <input type="number" id="cycles" min="1" step="1" value="6">
+        </div>
+        <div class="full">
+          <div class="toggles">
+            <label class="chip"><input id="continuous" type="checkbox"> Modo continuo</label>
+            <label class="chip"><input id="sound" type="checkbox" checked> Sonido</label>
+            <label class="chip"><input id="vibrate" type="checkbox"> Vibrar</label>
+            <span class="chip">Atajos: <span class="kbd">Espacio</span> iniciar/pausar · <span class="kbd">R</span> reiniciar</span>
+          </div>
+          <div class="buttons">
+            <button class="btn primary" id="start">Iniciar</button>
+            <button class="btn" id="pause" disabled>Pausar</button>
+            <button class="btn" id="reset" disabled>Reiniciar</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px">
+        <div class="bar" aria-label="Progreso total"><i id="progress"></i></div>
+      </div>
+
+      <p class="tips" style="margin-top:10px">Sugerencias: espalda recta, hombros relajados, lengua en el paladar durante la exhalación 4‑7‑8. Si te mareas, <span class="status" style="color:var(--warn)">detente</span>. Esto no es consejo médico.</p>
+    </section>
+
+    <section class="panel stage">
+      <div class="breath-wrap" aria-live="polite">
+        <div class="ring"></div>
+        <div class="circle" id="circle"></div>
+        <div class="label">
+          <h2 id="phase">Listo</h2>
+          <div class="count"><span id="time">0.0</span> s</div>
+          <div class="meta"><span id="cycle">0</span> / <span id="total">0</span> ciclos</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+(function(){
+  // Elements
+  const presetEl = document.getElementById('preset');
+  const inhaleEl = document.getElementById('inhale');
+  const hold1El  = document.getElementById('hold1');
+  const exhaleEl = document.getElementById('exhale');
+  const hold2El  = document.getElementById('hold2');
+  const cyclesEl = document.getElementById('cycles');
+  const continuousEl = document.getElementById('continuous');
+  const soundEl = document.getElementById('sound');
+  const vibrateEl = document.getElementById('vibrate');
+
+  const startBtn = document.getElementById('start');
+  const pauseBtn = document.getElementById('pause');
+  const resetBtn = document.getElementById('reset');
+
+  const circle = document.getElementById('circle');
+  const phase  = document.getElementById('phase');
+  const timeEl = document.getElementById('time');
+  const cycleEl= document.getElementById('cycle');
+  const totalEl= document.getElementById('total');
+  const progressEl = document.getElementById('progress');
+
+  const PHASES = ['Inhala','Sostén','Exhala','Sostén'];
+  let durations = [toNum(inhaleEl), toNum(hold1El), toNum(exhaleEl), toNum(hold2El)];
+
+  // State
+  let reqId = null;
+  let running = false;
+  let paused = false;
+  let phaseIndex = 0;
+  let phaseStart = 0; // ms
+  let phaseRemain = 0; // s
+  let cyclesDone = 0;
+  let totalCycles = parseInt(cyclesEl.value,10) || 0;
+  let totalPhaseCount = 0; // count of completed phases to compute progress
+  let audioCtx = null;
+
+  function toNum(input){ return parseFloat(input.value || '0') || 0 }
+  function updateDurationsFromInputs(){ durations = [toNum(inhaleEl), toNum(hold1El), toNum(exhaleEl), toNum(hold2El)] }
+
+  function setPreset(name){
+    if(name==='box'){ inhaleEl.value=4; hold1El.value=4; exhaleEl.value=4; hold2El.value=4; }
+    else if(name==='478'){ inhaleEl.value=4; hold1El.value=7; exhaleEl.value=8; hold2El.value=0; }
+    else if(name==='coherent'){ inhaleEl.value=5; hold1El.value=0; exhaleEl.value=5; hold2El.value=0; }
+    updateDurationsFromInputs();
+  }
+
+  presetEl.addEventListener('change', (e)=>{
+    if(e.target.value!=='custom') setPreset(e.target.value);
+  });
+  [inhaleEl, hold1El, exhaleEl, hold2El].forEach(i=> i.addEventListener('change', updateDurationsFromInputs));
+
+  // Audio beep
+  function beep(){
+    if(!soundEl.checked) return;
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = (phaseIndex===0? 540 : phaseIndex===2? 420 : 480); // inhale / exhale / hold
+      g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.2, audioCtx.currentTime+0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime+0.18);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime+0.2);
+    }catch(e){}
+  }
+
+  function vibrate(){ if(vibrateEl.checked && navigator.vibrate) navigator.vibrate(40) }
+
+  function resetState(){
+    cancelAnim();
+    running=false; paused=false; phaseIndex=0; cyclesDone=0; totalPhaseCount=0;
+    updateDurationsFromInputs();
+    totalCycles = parseInt(cyclesEl.value,10)||0;
+    totalEl.textContent = continuousEl.checked? '∞' : totalCycles;
+    cycleEl.textContent = cyclesDone;
+    progressEl.style.width = '0%';
+    phase.textContent = 'Listo';
+    timeEl.textContent = '0.0';
+    circle.style.setProperty('--scale', 0.7);
+    startBtn.disabled = false; pauseBtn.disabled = true; resetBtn.disabled = true;
+  }
+
+  function cancelAnim(){ if(reqId){ cancelAnimationFrame(reqId); reqId=null } }
+
+  function start(){
+    if(running && paused){
+      // resume
+      paused=false; phaseStart = performance.now();
+      loop();
+      startBtn.disabled = true; pauseBtn.disabled = false; resetBtn.disabled = false;
+      return;
+    }
+    // fresh start
+    resetState();
+    running = true; paused = false; phaseIndex = 0; cyclesDone=0; totalPhaseCount=0;
+    totalCycles = parseInt(cyclesEl.value,10)||0;
+    totalEl.textContent = continuousEl.checked? '∞' : totalCycles;
+
+    phaseRemain = durations[phaseIndex];
+    phaseStart = performance.now();
+    transitionVisual();
+    beep(); vibrate();
+    loop();
+    startBtn.disabled = true; pauseBtn.disabled = false; resetBtn.disabled = false;
+  }
+
+  function pause(){ if(!running || paused) return; paused = true; cancelAnim(); startBtn.disabled=false; pauseBtn.disabled=true; }
+  function reset(){ resetState(); }
+
+  function transitionVisual(){
+    // Adjust circle size target per phase
+    if(phaseIndex===0){ // inhale
+      phase.textContent = PHASES[0];
+      circle.style.setProperty('--scale', 1.0);
+    } else if(phaseIndex===1){
+      phase.textContent = PHASES[1];
+    } else if(phaseIndex===2){ // exhale
+      phase.textContent = PHASES[2];
+      circle.style.setProperty('--scale', 0.65);
+    } else {
+      phase.textContent = PHASES[3];
+    }
+  }
+
+  function nextPhase(){
+    totalPhaseCount++;
+    phaseIndex = (phaseIndex + 1) % 4;
+    if(phaseIndex===0){ // completed a cycle
+      cyclesDone++;
+      cycleEl.textContent = cyclesDone;
+      // progress
+      if(!continuousEl.checked && totalCycles>0){
+        const pct = Math.min(100, (cyclesDone/totalCycles)*100);
+        progressEl.style.width = pct.toFixed(2)+'%';
+      }
+      if(!continuousEl.checked && totalCycles>0 && cyclesDone >= totalCycles){
+        finish(); return;
+      }
+    }
+    // Skip zero-duration phases
+    let guard=0;
+    while(durations[phaseIndex]===0 && guard<5){
+      phaseIndex = (phaseIndex + 1) % 4;
+      if(phaseIndex===0){ // skipped into next cycle
+        cyclesDone++;
+        cycleEl.textContent = cyclesDone;
+        if(!continuousEl.checked && totalCycles>0){
+          const pct = Math.min(100, (cyclesDone/totalCycles)*100);
+          progressEl.style.width = pct.toFixed(2)+'%';
+        }
+        if(!continuousEl.checked && totalCycles>0 && cyclesDone >= totalCycles){ finish(); return; }
+      }
+      guard++;
+    }
+    phaseRemain = durations[phaseIndex];
+    phaseStart = performance.now();
+    transitionVisual();
+    beep(); vibrate();
+  }
+
+  function finish(){
+    cancelAnim(); running=false; paused=false;
+    phase.textContent = '¡Completado!';
+    timeEl.textContent = '0.0';
+    startBtn.disabled=false; pauseBtn.disabled=true; resetBtn.disabled=false;
+    circle.style.setProperty('--scale', 0.8);
+  }
+
+  function loop(){
+    reqId = requestAnimationFrame(loop);
+    const now = performance.now();
+    const elapsed = (now - phaseStart)/1000;
+    const remaining = Math.max(0, phaseRemain - elapsed);
+    timeEl.textContent = remaining.toFixed(1);
+
+    // Smooth breathing animation within phase
+    // (Interpolated by CSS transition on --scale already)
+
+    if(remaining <= 0.0001){
+      nextPhase();
+    }
+  }
+
+  // Wire controls
+  startBtn.addEventListener('click', start);
+  pauseBtn.addEventListener('click', pause);
+  resetBtn.addEventListener('click', reset);
+
+  // Update state when cycles/continuous change
+  cyclesEl.addEventListener('change', ()=>{ totalCycles=parseInt(cyclesEl.value,10)||0; totalEl.textContent = continuousEl.checked? '∞' : totalCycles; });
+  continuousEl.addEventListener('change', ()=>{ totalEl.textContent = continuousEl.checked? '∞' : (parseInt(cyclesEl.value,10)||0) });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    if(e.code==='Space'){ e.preventDefault(); if(!running) start(); else if(paused) start(); else pause(); }
+    if(e.key==='r' || e.key==='R'){ e.preventDefault(); reset(); }
+  });
+
+  // Initialize
+  resetState();
+})();
+</script>
+</body>
+</html>
